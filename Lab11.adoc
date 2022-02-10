@@ -219,4 +219,4 @@ image::3.jpg[]
 
 == Результат 2
 
-image::4.jpg[]
+image::4.JPG[]
