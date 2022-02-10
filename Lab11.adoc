@@ -54,7 +54,7 @@ image::2.jpg[]
 ** Дождаться флага готовности преобразования
 ** Считать преобразованное значение
 
-== Работа с программой
+== Работа с программой 1
 
 [source, c++]
 #include "adc1registers.hpp" //for ADC1
@@ -107,12 +107,116 @@ float temperature = 0.0F ;
  }
 }
 
-== Результат
+== Работа с программой 2
+
+Подключаем необходимые библиотек, после чего настраиваем передачу по UART, а также производим настройку АЦП для измерения температуры, после преобразовываем значение температуры и выводим его по интерфейсу.
+
+[source, c++]
+#include "gpioaregisters.hpp"  //for Gpioa
+#include "gpiocregisters.hpp"  //for Gpioc
+#include "gpiobregisters.hpp"  //for Gpiob
+#include "rccregisters.hpp"    //for RCC
+#include "tim2registers.hpp"   //for SPI2
+#include "nvicregisters.hpp"   //for NVIC
+#include "usart2registers.hpp" //for USART2
+#include "adc1registers.hpp" //for ADC1
+#include "adccommonregisters.hpp" //for ADCCommon
+#include <iostream>
+#include <string>
+#include <sstream>
+#include <iomanip>
+using namespace std ;
+extern "C"
+{
+ int __low_level_init(void)
+ {
+ RCC::CR::HSION::On::Set() ;
+ while (!RCC::CR::HSIRDY::Ready::IsSet())
+ {
+ }
+ RCC::CFGR::SW::Hsi::Set() ;
+ while (!RCC::CFGR::SWS::Hsi::IsSet())
+ {
+ }
+   //Switch on clock on ADC1
+   RCC::APB2ENR::ADC1EN::Enable::Set();
+   //Switch On internal tempearture sensor
+   ADC_Common::CCR::TSVREFE::Set(1U);
+   ADC1::JSQR::JSQ4::Set(1U);
+   //Set single conversion mode
+   ADC1::CR1::RES::Set(0U);
+   ADC1::CR2::CONT::Set(1U);
+   ADC1::CR2::EOCS::Set(0U);
+   // Set 84 cycles sample rate for channel 18
+   ADC1::SMPR1::SMP18::Set(4U);
+   // Set laentgh of conversion sequence to 1
+   ADC1::JSQR::JL::Set(0x00);
+   // Connect first conversion on Channel 18
+   ADC1::JSQR::JSQ4::Set(18U);
+   RCC::AHB1ENR::GPIOAEN::Enable::Set();
+   // Постра а в альтернативныей режим
+   GPIOA::MODER::MODER2::Alternate::Set();
+   GPIOA::MODER::MODER3::Alternate::Set();
+   GPIOA::AFRL::AFRL2::Af7::Set(); //Tx usart2
+   GPIOA::AFRL::AFRL3::Af7::Set(); //Rx usart2
+   //Подключить usart2 к шине тактирования
+   RCC::APB1ENR::USART2EN::Enable::Set();
+   USART2::CR1::OVER8::OversamplingBy16::Set();
+   USART2::CR1::M::Data8bits::Set();
+   USART2::CR1::PCE::ParityControlDisable::Set();
+   USART2::BRR::Write(16'000'000/(9600));
+   USART2::CR1::UE::Enable::Set();
+   return 1;
+ }
+}
+int main()
+{
+  uint32_t data = 0U ;
+  const char* temper = " ";
+  float temperature = 0.0F ;
+  uint16_t *B1 = (uint16_t *)0x1FFF7A2C;
+  uint16_t *K1 = (uint16_t *)0x1FFF7A2E;
+  string temp;
+  ADC1::CR2::ADON::Set(1);
+  uint16_t Tmin=((uint16_t)0x1FFF);
+  USART2::CR1::TE::Enable::Set();
+  for(;;)
+  {
+       //Start conversion
+    ADC1::CR2::JSWSTART::Set(1U);
+    // wait until Conversion is not complete
+    while(ADC1::SR::JEOC::Value0::IsSet())
+    {
+    }
+    //Get data from ADC
+    data = ADC1::JDR1::Get();
+    temperature = (((float)(110-30)/(*K1-*B1)*((float)data - *B1))+30) ; //Convert ADC counts to temperature
+    temp = to_string(temperature);
+    temp.insert(0, "Temperatura: ");
+    temp.append("       ");
+    tempout = temp.c_str();
+    USART2::DR::Write(*ptr);
+    while(USART2::SR::TXE::DataRegisterNotEmpty::IsSet())
+    {
+    }
+     ptr++;
+    if(*ptr == 0)
+    {
+      ptr=tempout;
+       for(int i=0;i<1000000;i++)
+       {
+       }
+    }
+  }
+  return 0 ;
+}
+
+== Результат 1 
 
 Начальные значения на рисунке показывают значение температуры в квартире. Далее мы начали нагревать.
 
 image::3.jpg[]
 
-=== Нерешенная задач №2
+== Результат 2
 
-* Задача №2 не решена, т.к не знаем как можно выцепить значение напряжения с диапазона регистров.
+image::4.jpg[]
